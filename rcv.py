@@ -108,11 +108,13 @@ def distribute_surplus(candidates, exhausted, quota):
             Candidate with the most surpluss votes transfered to their next 
             preference.
     """
-    biggest_winner = max(candidates, key=lambda c: c.surplus(quota))
-    surplus = biggest_winner.surplus(quota)
+    max_surplus = max([c.surplus(quota) for c in candidates])
+    biggest_winners = [c for c in candidates if c.surplus(quota) == max_surplus]
+    winner = biggest_winners[-1]
+    surplus = winner.surplus(quota)
     for c in candidates:
-        c.add_surplus(biggest_winner.surplus_for_candidate(surplus, c.name))
-    exhausted.add_surplus(biggest_winner.exhausted_ballots(surplus))
+        c.add_surplus(winner.surplus_for_candidate(surplus, c.name))
+    exhausted.add_surplus(winner.exhausted_ballots(surplus))
     return candidates
 
 
