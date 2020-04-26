@@ -12,53 +12,49 @@ class ElectionTest(unittest.TestCase):
 
     def test_abc_1(self):
         winners, exhausted = count_ballots("results/abc.csv", num_winners=1)
-        self.assertEquals(len(winners.values()), 1)
-        self.assertEquals(winners["Alice"].name, "Alice")
-        self.assertEquals(winners["Alice"].votes, 60_000)
+        self.assertEquals(len(winners), 1)
+        self.assertEquals(winners[0].name, "Alice")
+        self.assertEquals(winners[0].votes, 60_000)
         self.assertEquals(exhausted.votes, 0)
 
     def test_abc_2(self):
         winners, exhausted = count_ballots("results/abc.csv", num_winners=2)
-        self.assertEquals(len(winners.values()),  2)
-        self.assertEquals(winners["Alice"].name,  "Alice")
-        self.assertEquals(winners["Bill"].name,  "Bill")
-        self.assertEquals(winners["Alice"].votes,  30_000)
-        self.assertEquals(winners["Bill"].votes,  20_000)
+        self.assertEquals(len(winners),  2)
+        self.assertEquals(winners[0].name,  "Alice")
+        self.assertEquals(winners[1].name,  "Bill")
+        self.assertEquals(winners[0].votes,  30_000)
+        self.assertEquals(winners[1].votes,  20_000)
         self.assertEquals(exhausted.votes,  30_000)
 
     def test_bookclub(self):
         winners, exhausted = count_ballots("results/book_club_responses.csv", num_winners=1)
-        self.assertEquals(len(winners.values()),  1)
-        self.assertEquals(max(winners.values()).name,  "[One Day]")
+        self.assertEquals(len(winners),  1)
+        self.assertEquals(max(winners).name,  "[One Day]")
         self.assertEquals(exhausted.votes,  0)
 
     def test_elections(self):
         winners, exhausted = count_ballots("results/elections.csv", num_winners=1)
-        self.assertEquals(len(winners.values()),  1)
-        self.assertEquals(max(winners.values()).votes,  80_000)
+        self.assertEquals(len(winners),  1)
+        self.assertEquals(max(winners).votes,  40_000)
         self.assertEquals(exhausted.votes,  0)
-
-    def test_pick_loser(self):
-        with open("results/tie.csv") as csv_file:
-            num_winners = 1
-            csv_data = csv.reader(csv_file, delimiter=',')
-            candidate_names, vote_data = parse_vote_data(csv_data)
-            candidates = award_first_pref(candidate_names, vote_data)
-            round_results = [[(c.name, c.votes) for c in candidates]]
-            num_votes = sum([c.votes for c in candidates])
-            exhausted = Candidate("Exhausted", [])
-            quota = calculate_quota(num_winners, num_votes)
-            tied = [Candidate("Alice", ["Alice"]), Candidate("Bill", ["Alice", "Alice", "Alice", "Alice"])]
-            result = pick_loser(tied, round_results)
-            self.assertTrue(type(result) is Candidate)
-            self.assertEquals(result.name,  "Bill")
-            self.assertEquals(result.votes,  40_000)
 
     def test_tie(self):
         winners, exhausted = count_ballots("results/tie.csv", num_winners=1)
         self.assertEqual(1, len(winners))
-        self.assertEqual(60_000, max(winners.values()).votes)
-        self.assertEqual(60_000, exhausted.votes)
+        self.assertEqual(60_000, max(winners).votes)
+
+    def test_7_way_3(self):
+        winners, exhausted = count_ballots("results/seven_way.csv", num_winners=3)
+        self.assertEqual(3, len(winners))
+        self.assertAlmostEqual(35_000, winners[0].votes, delta=1.0)
+        self.assertEqual("Dave", winners[0].name)
+        self.assertEqual("Alice", winners[1].name)
+        self.assertEqual("Fred", winners[2].name)
+
+    def test_7_way_1(self):
+        winners, exhausted = count_ballots("results/seven_way.csv", num_winners=1)
+        self.assertEqual(1, len(winners))
+        self.assertEqual("Dave", winners[0].name)
 
 if __name__ ==  '__main__':
     unittest.main()

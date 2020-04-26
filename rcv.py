@@ -34,18 +34,18 @@ class Candidate:
     def ballots(self):
         return self.__ballots
 
-    def surplus_for_candidate(self, surplus, candidate_name):
-        surplus_per_vote = surplus / len(self.__ballots)
+    def surplus_for_candidate(self, starting_votes, surplus, candidate_name):
+        surplus_per_vote = surplus / len(self.ballots)
         votes_for_candidate = sum(
             [1 for b in self.__ballots if len(b) > 0 and b[0] == candidate_name])
-        result = math.floor(votes_for_candidate * surplus_per_vote)
+        result = math.ceil(votes_for_candidate * surplus_per_vote)
         self.__votes -= result
         return result
 
     def exhausted_ballots(self, surplus):
-        surplus_per_vote = surplus / len(self.__ballots)
+        surplus_per_vote = surplus / (self.votes) * 10_000
         exhausted_votes = sum([1 for b in self.__ballots if len(b) == 0])
-        result = math.floor(exhausted_votes * surplus_per_vote)
+        result = math.ceil(exhausted_votes * surplus_per_vote)
         self.__votes -= result
         return result
 
@@ -55,9 +55,9 @@ class Candidate:
     def surplus(self, quota):
         return max(self.__votes - quota, 0.0)
 
-    def add_ballot(self, new_ballot):
+    def add_ballot(self, new_ballot, votes_per_ballot):
         self.__ballots.append(new_ballot)
-        self.__votes += 10_000  # add a vote for the corresponding ballot
+        self.__votes += math.floor(votes_per_ballot)
 
     def drop_candidate(self, candidate):
         for b in self.__ballots:
@@ -110,63 +110,38 @@ def distribute_surplus(candidates, exhausted, quota):
     """
     max_surplus = max([c.surplus(quota) for c in candidates])
     biggest_winners = [c for c in candidates if c.surplus(quota) == max_surplus]
-    winner = biggest_winners[-1]
+    winner = biggest_winners[0]
+    candidates.remove(winner)
     surplus = winner.surplus(quota)
+    starting_votes = winner.votes
     for c in candidates:
-        c.add_surplus(winner.surplus_for_candidate(surplus, c.name))
+        c.drop_candidate(winner)
+        c.add_surplus(winner.surplus_for_candidate(starting_votes, surplus, c.name))
     exhausted.add_surplus(winner.exhausted_ballots(surplus))
     return candidates
 
 
-def redisitribute_loser(candidates, exhausted, round_results):
+def redisitribute_loser(candidates, exhausted):
     """ 
         Returns: A list of Candidates with the lowest vote
             getting Canidate removed
     """
-    biggest_losers = [
-        c for c in candidates if c.votes == min(candidates).votes]
-    eliminated = pick_loser(biggest_losers, round_results)
+    fewest_votes = min(candidates).votes
+    biggest_losers = [c for c in candidates if c.votes == fewest_votes]
+    eliminated = biggest_losers[-1]
     candidates.remove(eliminated)
 
+    starting_votes = eliminated.votes
     for b in eliminated.ballots:
         next_choice = b[0] if len(b) > 0 else None
         if(next_choice == None):
-            exhausted.add_ballot(b)
+            exhausted.add_ballot(b, eliminated.votes)
         for c in candidates:
             c.drop_candidate(eliminated)
             if c.name == next_choice:
-                c.add_ballot(b[1:])
+                c.add_ballot(b[1:], starting_votes / len(eliminated.ballots))
 
     return candidates
-
-
-def pick_loser(tied, round_results):
-    """ Breaks the tie by recursively picking the candidate with the most 
-        votes in the last round.
-
-    Args:
-        tied: List[Candidate]
-        round_results: List of Tuples of candidate name to votes where each
-                       list item is the reults from that round.
-
-    Returns: The candidate that will be redistributed.
-    """
-    if len(tied) == 1:
-        return tied[0]  # There is no tie return sole loser
-    if not round_results:
-        return tied[0]  # We can't break any remaing ties just pick a loser
-    tied_names = [c.name for c in tied]
-    rnd = round_results[-1]
-    min_votes = min([c for c in rnd if c[0] in tied_names],
-                    key=lambda r: r[1])[1]
-    loser_names = [c[0]
-                   for c in rnd if c[0] in tied_names and c[1] == min_votes]
-    loser_candidates = [c for c in tied if c.name in loser_names]
-
-    if(len(loser_candidates) == 1):
-        return loser_candidates[0]
-
-    return pick_loser(loser_candidates, round_results[:-1])
 
 
 def parse_vote_data(csv_data):
@@ -205,38 +180,39 @@ def count_ballots(file_name, num_winners):
         csv_data = csv.reader(csv_file, delimiter=',')
         candidate_names, vote_data = parse_vote_data(csv_data)
         candidates_to_votes = award_first_pref(candidate_names, vote_data)
-        winners = {}
-        round_results = []
+        round_num = 1
         exhausted = Candidate("Exhausted", [])
+        winners = []
 
         while True:
             num_votes = sum([c.votes for c in candidates_to_votes])
             quota = calculate_quota(num_winners, num_votes)
             candidates_to_votes.sort(reverse=True)
             # Print stats
-            print(f"Round {len(round_results) + 1}:")
+            print(f"Round {round_num}:")
+            for w in winners:
+                print(f"🏆: {w}")
+            print(f"Votes: {num_votes + exhausted.votes + sum([w.votes for w in winners])}")
             print(f"Quota to win: {quota}")
             for c in candidates_to_votes:
                 print(f"  {c.name}: {c.votes}")
-
-            round_results.append([(c.name, c.votes)
-                                  for c in candidates_to_votes])
+            print(f"  Exhausted: {exhausted.votes}")
 
             # Update winners
-            winners.clear()
-            for w in find_winners(candidates_to_votes, quota):
-                winners[w.name] = w
+            round_winners = find_winners(candidates_to_votes, quota)
+            for w in round_winners:
+                winners.append(w)
 
-            if(len(winners) == num_winners):
-                return winners, exhausted
-            elif(sum([w.surplus(quota) for w in winners.values()]) > 0.0):
+            if(len(winners) >= num_winners):
+                return winners[:num_winners], exhausted
+            elif(sum([w.surplus(quota) for w in round_winners]) > 0.0):
                 candidates_to_votes = distribute_surplus(
                     candidates_to_votes, exhausted, quota)
             else:
                 candidates_to_votes = redisitribute_loser(
-                    candidates_to_votes, exhausted, round_results)
+                    candidates_to_votes, exhausted)
             
-
+            round_num += 1
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Administer election.')
@@ -248,6 +224,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     winners, exhausted = count_ballots(args.file, num_winners=args.num_winners)
     print("")
-    for w in winners.values():
+    for w in winners:
         print(f"🏆: {w}")
     print(f"exhausted votes {exhausted.votes}")
