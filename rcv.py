@@ -2,6 +2,7 @@ import csv
 import math
 import re
 import argparse
+import random
 
 
 def calculate_quota(num_winners, num_votes):
@@ -94,7 +95,9 @@ def award_first_pref(candidate_names, ballot_data):
         ballots[key] = [
             *value, [candidate_names[row.index(choice)] for choice in choices if choice in row]]
 
-    return [Candidate(name=k, ballots=v) for (k, v) in ballots.items()]
+    candidates = [Candidate(name=k, ballots=v) for (k, v) in ballots.items()]
+    random.shuffle(candidates)
+    return candidates
 
 
 def find_winners(candidates, quota):
